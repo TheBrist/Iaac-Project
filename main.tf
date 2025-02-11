@@ -86,7 +86,16 @@ resource "azurerm_network_security_group" "nsg_vm" {
     source_address_prefix      = local.subnets["AzureBastionSubnet"].address
     destination_address_prefix = "*"
   }
-
+  security_rule {
+    name                       = "Allow-FunctionApp"
+    priority                   = 101
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "*"
+    source_address_prefix      = "10.0.0.0/24" # VM subnet CIDR
+    destination_address_prefix = "10.1.0.0/24" # Function App private IP range
+    destination_port_range     = "443"
+  }
   security_rule {
     name                       = "Deny-All"
     priority                   = 200
@@ -175,10 +184,10 @@ resource "azurerm_bastion_host" "bastion" {
 }
 
 resource "azurerm_storage_account" "function_app_sa" {
-  name = "windows-function-app-sa"
-  resource_group_name = var.resource_group_name
-  location = var.location
-  account_tier = "Standard"
+  name                     = "windows-function-app-sa"
+  resource_group_name      = var.resource_group_name
+  location                 = var.location
+  account_tier             = "Standard"
   account_replication_type = "LRS"
 }
 resource "azurerm_service_plan" "function_app_sp" {
@@ -194,10 +203,10 @@ resource "azurerm_windows_function_app" "function_app" {
   resource_group_name = var.resource_group_name
   location            = var.location
 
-  service_plan_id = azurerm_service_plan.function_app_sp.id
+  service_plan_id      = azurerm_service_plan.function_app_sp.id
   storage_account_name = azurerm_storage_account.function_app_sa.name
 
-  virtual_network_subnet_id = azurerm_subnet.subnet["subnet-function-app"].subnet_id
+  virtual_network_subnet_id  = azurerm_subnet.subnet["subnet-function-app"].subnet_id
   storage_account_access_key = azurerm_storage_account.function_app_sa.primary_access_key
 
   site_config {
@@ -206,40 +215,40 @@ resource "azurerm_windows_function_app" "function_app" {
 }
 
 resource "azurerm_private_endpoint" "function_app_endpoint" {
-  name = "function-app-private-endpoint"
-  location = var.location
+  name                = "function-app-private-endpoint"
+  location            = var.location
   resource_group_name = var.resource_group_name
-  subnet_id = azurerm_subnet.subnet["subnet-function-app"].subnet_id
+  subnet_id           = azurerm_subnet.subnet["subnet-function-app"].subnet_id
 
   private_service_connection {
-    name = "function-app-connection"
+    name                           = "function-app-connection"
     private_connection_resource_id = azurerm_windows_function_app.function_app.id
-    subresource_names = [ "sites" ]
-    is_manual_connection = false
+    subresource_names              = ["sites"]
+    is_manual_connection           = false
   }
 }
 
 resource "azurerm_private_dns_zone" "function_app_dns" {
-  name = "privatelink.azurewebsites.net"
+  name                = "privatelink.azurewebsites.net"
   resource_group_name = var.resource_group_name
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "dns_link" {
-  name = "function-app-dns-link"
-  resource_group_name = var.resource_group_name
+  name                  = "function-app-dns-link"
+  resource_group_name   = var.resource_group_name
   private_dns_zone_name = azurerm_private_dns_zone.function_app_dns.name
-  virtual_network_id = azurerm_virtual_network.vnets["${var.vnet_func_app_name}"].id
+  virtual_network_id    = azurerm_virtual_network.vnets["${var.vnet_func_app_name}"].id
 }
 
 resource "azurerm_private_endpoint" "storage_endpoint" {
-  name = "sa-private-endpoint"
-  location = var.location
+  name                = "sa-private-endpoint"
+  location            = var.location
   resource_group_name = var.resource_group_name
-  subnet_id = azurerm_subnet.subnet["subnet-function-app"].subnet_id
+  subnet_id           = azurerm_subnet.subnet["subnet-function-app"].subnet_id
   private_service_connection {
-    name = "storage-account-connection"
+    name                           = "storage-account-connection"
     private_connection_resource_id = azurerm_storage_account.function_app_sa.id
-    subresource_names = [ "blob" ]
-    is_manual_connection = false
+    subresource_names              = ["blob"]
+    is_manual_connection           = false
   }
 }
