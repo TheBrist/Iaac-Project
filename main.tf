@@ -27,6 +27,10 @@ locals {
       address   = "10.1.0.0/24"
       vnet_name = "${var.vnet_func_app_name}"
     }
+    "subnet-private-endpoints" = {
+      address   = "10.1.1.0/24"
+      vnet_name = "${var.vnet_func_app_name}"
+    }
   }
 
   peerings = {
@@ -49,7 +53,19 @@ resource "azurerm_subnet" "subnet" {
   address_prefixes     = [each.value.address]
 
   depends_on = [azurerm_virtual_network.vnets]
+
+  dynamic "delegation" {
+    for_each = each.key == "subnet-function-app" ? [1] : []
+    content {
+      name = "function_app_delegation"
+      service_delegation {
+        name    = "Microsoft.Web/serverFarms"
+        actions = ["Microsoft.Network/virtualNetworks/subnets/action"]
+      }
+    }
+  }
 }
+
 
 resource "azurerm_virtual_network" "vnets" {
   for_each            = local.vnets
@@ -92,6 +108,7 @@ resource "azurerm_network_security_group" "nsg_vm" {
     direction                  = "Outbound"
     access                     = "Allow"
     protocol                   = "*"
+    source_port_range          = "*"
     source_address_prefix      = "10.0.0.0/24" # VM subnet CIDR
     destination_address_prefix = "10.1.0.0/24" # Function App private IP range
     destination_port_range     = "443"
@@ -184,7 +201,7 @@ resource "azurerm_bastion_host" "bastion" {
 }
 
 resource "azurerm_storage_account" "function_app_sa" {
-  name                     = "windows-function-app-sa"
+  name                     = "safunctionappwin"
   resource_group_name      = var.resource_group_name
   location                 = var.location
   account_tier             = "Standard"
@@ -195,18 +212,19 @@ resource "azurerm_service_plan" "function_app_sp" {
   resource_group_name = var.resource_group_name
   location            = var.location
   os_type             = "Windows"
-  sku_name            = "Y1"
+  sku_name            = "EP1"
+
 }
 
 resource "azurerm_windows_function_app" "function_app" {
-  name                = "windows-function-app"
+  name                = "windows-function-app1"
   resource_group_name = var.resource_group_name
   location            = var.location
 
   service_plan_id      = azurerm_service_plan.function_app_sp.id
   storage_account_name = azurerm_storage_account.function_app_sa.name
 
-  virtual_network_subnet_id  = azurerm_subnet.subnet["subnet-function-app"].subnet_id
+  virtual_network_subnet_id  = azurerm_subnet.subnet["subnet-function-app"].id
   storage_account_access_key = azurerm_storage_account.function_app_sa.primary_access_key
 
   site_config {
@@ -218,7 +236,7 @@ resource "azurerm_private_endpoint" "function_app_endpoint" {
   name                = "function-app-private-endpoint"
   location            = var.location
   resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.subnet["subnet-function-app"].subnet_id
+  subnet_id           = azurerm_subnet.subnet["subnet-private-endpoints"].id
 
   private_service_connection {
     name                           = "function-app-connection"
@@ -244,7 +262,7 @@ resource "azurerm_private_endpoint" "storage_endpoint" {
   name                = "sa-private-endpoint"
   location            = var.location
   resource_group_name = var.resource_group_name
-  subnet_id           = azurerm_subnet.subnet["subnet-function-app"].subnet_id
+  subnet_id           = azurerm_subnet.subnet["subnet-private-endpoints"].id
   private_service_connection {
     name                           = "storage-account-connection"
     private_connection_resource_id = azurerm_storage_account.function_app_sa.id
