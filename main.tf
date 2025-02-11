@@ -111,7 +111,7 @@ resource "azurerm_network_security_group" "nsg_vm" {
     source_port_range          = "*"
     source_address_prefix      = "10.0.0.0/24" # VM subnet CIDR
     destination_address_prefix = "10.1.0.0/24" # Function App private IP range
-    destination_port_range     = "443"
+    destination_port_range     = "80"
   }
   security_rule {
     name                       = "Deny-All"
