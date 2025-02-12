@@ -102,15 +102,45 @@ resource "azurerm_network_security_group" "nsg_vm" {
     source_address_prefix      = local.subnets["AzureBastionSubnet"].address
     destination_address_prefix = "*"
   }
-  security_rule {
-    name                       = "Allow-FunctionApp"
-    priority                   = 101
+
+   security_rule {
+    name                       = "Allow-FunctionApp-HTTP"
+    priority                   = 100
     direction                  = "Outbound"
     access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = local.subnets["subnet-vm"].address
+    destination_address_prefix = local.subnets["subnet-function-app"].address
+  }
+
+  security_rule {
+    name                       = "Deny-All"
+    priority                   = 200
+    direction                  = "Inbound"
+    access                     = "Deny"
     protocol                   = "*"
     source_port_range          = "*"
-    source_address_prefix      = "10.0.0.0/24" # VM subnet CIDR
-    destination_address_prefix = "10.1.0.0/24" # Function App private IP range
+    destination_port_range     = "*"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+}
+
+resource "azurerm_network_security_group" "nsg_function_app" {
+  name                = "nsg-function-app"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  security_rule {
+    name                       = "Allow-VM"
+    priority                   = 100
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    source_address_prefix      = local.subnets["subnet-vm"].address
+    destination_address_prefix = local.subnets["subnet-function-app"].address
     destination_port_range     = "80"
   }
   security_rule {
@@ -141,6 +171,11 @@ resource "azurerm_network_interface" "vm_nic" {
 resource "azurerm_network_interface_security_group_association" "add_nsg_to_vm_nic" {
   network_interface_id      = azurerm_network_interface.vm_nic.id
   network_security_group_id = azurerm_network_security_group.nsg_vm.id
+}
+
+resource "azurerm_subnet_network_security_group_association" "name" {
+  subnet_id      = azurerm_subnet.subnet["subnet-function-app"].id
+  network_security_group_id = azurerm_network_security_group.nsg_function_app.id
 }
 
 resource "azurerm_role_assignment" "vm_rdp_access" {
@@ -229,6 +264,12 @@ resource "azurerm_windows_function_app" "function_app" {
 
   site_config {
     vnet_route_all_enabled = true
+    ip_restriction {
+      name = "DenyPublicTraffic"
+      ip_address = "0.0.0.0/0"
+      action = "Deny"
+      priority = 100
+    }
   }
 }
 
@@ -245,7 +286,7 @@ resource "azurerm_private_endpoint" "function_app_endpoint" {
     is_manual_connection           = false
   }
 }
-
+//make intenret acces private for function app in terraform
 resource "azurerm_private_dns_zone" "function_app_dns" {
   name                = "privatelink.azurewebsites.net"
   resource_group_name = var.resource_group_name
@@ -255,7 +296,16 @@ resource "azurerm_private_dns_zone_virtual_network_link" "dns_link" {
   name                  = "function-app-dns-link"
   resource_group_name   = var.resource_group_name
   private_dns_zone_name = azurerm_private_dns_zone.function_app_dns.name
-  virtual_network_id    = azurerm_virtual_network.vnets["${var.vnet_func_app_name}"].id
+  virtual_network_id    = azurerm_virtual_network.vnets["${var.vnet_vm_name}"].id
+  registration_enabled = true
+}
+
+resource "azurerm_private_dns_a_record" "function_app_a_record" {
+  name                = "windows-function-app1-dns"
+  zone_name           = azurerm_private_dns_zone.function_app_dns.name
+  resource_group_name = var.resource_group_name
+  ttl                 = 3600
+  records             = [azurerm_private_endpoint.function_app_endpoint.private_service_connection[0].private_ip_address]
 }
 
 resource "azurerm_private_endpoint" "storage_endpoint" {
