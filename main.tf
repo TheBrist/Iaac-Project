@@ -103,9 +103,9 @@ resource "azurerm_network_security_group" "nsg_vm" {
     destination_address_prefix = "*"
   }
 
-   security_rule {
+  security_rule {
     name                       = "Allow-FunctionApp-HTTP"
-    priority                   = 100
+    priority                   = 101
     direction                  = "Outbound"
     access                     = "Allow"
     protocol                   = "Tcp"
@@ -113,6 +113,18 @@ resource "azurerm_network_security_group" "nsg_vm" {
     destination_port_range     = "80"
     source_address_prefix      = local.subnets["subnet-vm"].address
     destination_address_prefix = local.subnets["subnet-function-app"].address
+  }
+
+  security_rule {
+    name                       = "Allow-FA-PE"
+    priority                   = 100
+    direction                  = "Outbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "80"
+    source_address_prefix      = local.subnets["subnet-vm"].address
+    destination_address_prefix = local.subnets["subnet-private-endpoints"].address
   }
 
   security_rule {
@@ -174,7 +186,7 @@ resource "azurerm_network_interface_security_group_association" "add_nsg_to_vm_n
 }
 
 resource "azurerm_subnet_network_security_group_association" "name" {
-  subnet_id      = azurerm_subnet.subnet["subnet-function-app"].id
+  subnet_id                 = azurerm_subnet.subnet["subnet-function-app"].id
   network_security_group_id = azurerm_network_security_group.nsg_function_app.id
 }
 
@@ -263,12 +275,13 @@ resource "azurerm_windows_function_app" "function_app" {
   storage_account_access_key = azurerm_storage_account.function_app_sa.primary_access_key
 
   site_config {
-    vnet_route_all_enabled = true
+    vnet_route_all_enabled = false
+
     ip_restriction {
-      name = "DenyPublicTraffic"
+      name       = "DenyPublicTraffic"
       ip_address = "0.0.0.0/0"
-      action = "Deny"
-      priority = 100
+      action     = "Deny"
+      priority   = 200
     }
   }
 }
@@ -285,27 +298,29 @@ resource "azurerm_private_endpoint" "function_app_endpoint" {
     subresource_names              = ["sites"]
     is_manual_connection           = false
   }
+
 }
-//make intenret acces private for function app in terraform
 resource "azurerm_private_dns_zone" "function_app_dns" {
   name                = "privatelink.azurewebsites.net"
   resource_group_name = var.resource_group_name
 }
 
 resource "azurerm_private_dns_zone_virtual_network_link" "dns_link" {
-  name                  = "function-app-dns-link"
+  name                  = "VMLink"
   resource_group_name   = var.resource_group_name
   private_dns_zone_name = azurerm_private_dns_zone.function_app_dns.name
   virtual_network_id    = azurerm_virtual_network.vnets["${var.vnet_vm_name}"].id
-  registration_enabled = true
+  registration_enabled  = true
 }
 
-resource "azurerm_private_dns_a_record" "function_app_a_record" {
-  name                = "windows-function-app1-dns"
-  zone_name           = azurerm_private_dns_zone.function_app_dns.name
+resource "azurerm_private_dns_a_record" "dns_a_record" {
+  name                = "windows-function-app1"
   resource_group_name = var.resource_group_name
   ttl                 = 3600
-  records             = [azurerm_private_endpoint.function_app_endpoint.private_service_connection[0].private_ip_address]
+  zone_name           = azurerm_private_dns_zone.function_app_dns.name
+  records             = ["${azurerm_private_endpoint.function_app_endpoint.private_service_connection[0].private_ip_address}"]
+
+  depends_on = [azurerm_private_endpoint.function_app_endpoint, azurerm_private_dns_zone.function_app_dns]
 }
 
 resource "azurerm_private_endpoint" "storage_endpoint" {
