@@ -3,3 +3,4 @@
 .terraform/
 *.bak
 *.swp
+/gcp/modules
