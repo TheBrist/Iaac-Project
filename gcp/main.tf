@@ -92,17 +92,6 @@ module "ilb-l7" {
       health_checks = []
     }
   }
-  health_check_configs = {
-    health-check = {
-      check_interval_sec  = 10
-      timeout_sec         = 5
-      healthy_threshold   = 2
-      unhealthy_threshold = 2
-      name                = "health-check"
-      http = {
-        port = 80
-      }
-  } }
   neg_configs = {
     my-neg = {
       cloudrun = {
