@@ -147,3 +147,13 @@ module "cloud_run_sa" {
   }
 }
 
+module "bucket" {
+  source = "./modules/gcs"
+  project_id = var.project_id_01
+  name = "cloud-storage"
+  prefix = var.prefix
+  versioning = true
+    location   = var.region
+
+  public_access_prevention = "enforced"
+}
