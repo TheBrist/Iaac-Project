@@ -40,7 +40,6 @@ module "vpc_external" {
     region        = var.region
   }]
 
-
   subnets_proxy_only = [
     {
       ip_cidr_range = "10.21.0.0/24"
@@ -70,8 +69,8 @@ module "external-lb" {
     neg-elb = {
       psc = {
         region         = var.region
-        subnetwork     = "external-lb"
-        target_service = "projects/mod-gcp-mam-haf-netanel-01/regions/me-west1/serviceAttachments/internal-lb"
+        subnetwork     = module.vpc_external.subnets_psc["${var.region}/external-lb"].self_link
+        target_service =  module.ilb-l7.service_attachment_id
       }
     }
   }
@@ -114,8 +113,9 @@ module "ilb-l7" {
       (var.project_id_02) = 1
     }
     consumer_reject_lists = []
-    name                  = "ilb-service-attachment"
   }
+
+
 }
 
 module "cloud_run" {
@@ -131,6 +131,12 @@ module "cloud_run" {
 
   ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
 
+  iam = {
+    "roles/run.invoker" = [
+      "serviceAccount:service-${data.google_project.project_01.number}@compute-system.iam.gserviceaccount.com"
+    ] 
+  }
+
   service_account     = module.cloud_run_sa.email
   deletion_protection = false
 }
@@ -142,18 +148,18 @@ module "cloud_run_sa" {
 
   iam_project_roles = {
     "${var.project_id_01}" = [
-      "roles/storage.objectAdmin"
+      "roles/storage.admin"
     ]
   }
-}
+} 
+
 
 module "bucket" {
-  source = "./modules/gcs"
+  source     = "./modules/gcs"
   project_id = var.project_id_01
-  name = "cloud-storage"
-  prefix = var.prefix
+  name       = "cloud-storage"
+  prefix     = var.prefix
   versioning = true
-    location   = var.region
-
+  location   = var.region
   public_access_prevention = "enforced"
 }
