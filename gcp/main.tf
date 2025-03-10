@@ -137,9 +137,11 @@ module "cloud_run" {
 
   iam = {
     "roles/run.invoker" = [
-      "serviceAccount:service-${data.google_project.project_01.number}@compute-system.iam.gserviceaccount.com"
+      "allUsers"
     ]
   }
+
+  custom_audiences = []
 
   service_account     = module.cloud_run_sa.email
   deletion_protection = false
@@ -181,5 +183,5 @@ resource "google_artifact_registry_repository" "my_repo" {
   repository_id = var.repo_name
   description   = "docker repository"
   format        = "DOCKER"
-  project = var.project_id_01
+  project       = var.project_id_01
 }
