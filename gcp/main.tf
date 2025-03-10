@@ -2,6 +2,10 @@ provider "google" {
   region = var.region
 }
 
+data "google_project" "project_01" {
+  project_id = var.project_id_01
+}
+
 module "vpc" {
   source     = "./modules/net-vpc"
   project_id = var.project_id_01
@@ -70,7 +74,7 @@ module "external-lb" {
       psc = {
         region         = var.region
         subnetwork     = module.vpc_external.subnets_psc["${var.region}/external-lb"].self_link
-        target_service =  module.ilb-l7.service_attachment_id
+        target_service = module.ilb-l7.service_attachment_id
       }
     }
   }
@@ -114,8 +118,6 @@ module "ilb-l7" {
     }
     consumer_reject_lists = []
   }
-
-
 }
 
 module "cloud_run" {
@@ -125,7 +127,9 @@ module "cloud_run" {
   name       = "cloudrun123"
   containers = {
     storage-api = {
-      image = "us-docker.pkg.dev/cloudrun/container/hello"
+      image = "${var.region}-docker.pkg.dev/${var.project_id_01}/${google_artifact_registry_repository.my_repo.repository_id}/testapi:latest"
+
+      env = { "BUCKET_NAME" = module.bucket.name }
     }
   }
 
@@ -134,11 +138,12 @@ module "cloud_run" {
   iam = {
     "roles/run.invoker" = [
       "serviceAccount:service-${data.google_project.project_01.number}@compute-system.iam.gserviceaccount.com"
-    ] 
+    ]
   }
 
   service_account     = module.cloud_run_sa.email
   deletion_protection = false
+
 }
 
 module "cloud_run_sa" {
@@ -151,15 +156,30 @@ module "cloud_run_sa" {
       "roles/storage.admin"
     ]
   }
-} 
-
+}
 
 module "bucket" {
-  source     = "./modules/gcs"
-  project_id = var.project_id_01
-  name       = "cloud-storage"
-  prefix     = var.prefix
-  versioning = true
-  location   = var.region
+  source                   = "./modules/gcs"
+  project_id               = var.project_id_01
+  name                     = "cloud-storage"
+  prefix                   = var.prefix
+  versioning               = true
+  location                 = var.region
   public_access_prevention = "enforced"
+  force_destroy            = true
+
+  iam_bindings = {
+    storage-admin = {
+      role    = "roles/storage.admin"
+      members = [module.cloud_run_sa.iam_email]
+    }
+  }
+}
+
+resource "google_artifact_registry_repository" "my_repo" {
+  location      = var.region
+  repository_id = var.repo_name
+  description   = "docker repository"
+  format        = "DOCKER"
+  project = var.project_id_01
 }
