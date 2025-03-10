@@ -10,13 +10,16 @@ variable "region" {
   default = "me-west1"
 }
 
+variable "prefix" {
+  default = "mod-gcp-mam-haf-gcs"
+}
+
+variable "repo_name" {
+  default = "my-repo"
+}
 
 variable "subnets" {
   default = {
-    "psc-projects" = {
-      ip_cidr_range = "10.0.0.0/24"
-      name          = "psc-projects"
-    },
     "ilb" = {
       ip_cidr_range = "10.1.0.0/24"
       name          = "ilb"
