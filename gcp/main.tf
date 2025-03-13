@@ -2,8 +2,26 @@ provider "google" {
   region = var.region
 }
 
+
+
 data "google_project" "project_01" {
   project_id = var.project_id_01
+}
+
+module "project_01" {
+  source = "./modules/project"
+  name   = var.project_id_01
+  parent = "folders/436369632532"
+
+  services = [var.project_01_apis]
+}
+
+module "project_02" {
+  source = "./modules/project"
+  name   = var.project_id_02
+  parent = "folders/910030953669"
+
+  services = [ var.project_02_apis ]
 }
 
 module "vpc" {
