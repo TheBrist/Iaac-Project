@@ -1,3 +1,8 @@
+provider "azurerm" {
+  features {}
+  subscription_id = "cb6a7a77-cdd1-4d79-974a-d6917ccb4ff7"
+}
+
 locals {
   vnets = {
     "${var.vnet_vm_name}" = {
@@ -40,6 +45,38 @@ locals {
   }
 }
 
+data "azurerm_storage_account_sas" "sas_token" {
+  connection_string = azurerm_storage_account.function_app_sa.primary_connection_string
+  start             = timestamp()
+  expiry            = timeadd(timestamp(), "1h")
+
+  permissions {
+    read    = true
+    filter  = false
+    tag     = false
+    update  = false
+    delete  = false
+    create  = false
+    add     = false
+    process = false
+    list    = false
+    write   = false
+  }
+
+  resource_types {
+    object    = true
+    service   = false
+    container = false
+  }
+
+  services {
+    blob  = true
+    file  = false
+    queue = false
+    table = false
+  }
+}
+
 resource "azurerm_subnet" "subnet" {
   for_each             = local.subnets
   name                 = each.key
@@ -60,7 +97,6 @@ resource "azurerm_subnet" "subnet" {
     }
   }
 }
-
 
 resource "azurerm_virtual_network" "vnets" {
   for_each            = local.vnets
@@ -249,6 +285,21 @@ resource "azurerm_storage_account" "function_app_sa" {
   account_tier             = "Standard"
   account_replication_type = "LRS"
 }
+
+# resource "azurerm_storage_container" "container" {
+#   name                  = "function-code"
+#   container_access_type = "private"
+#   storage_account_id    = azurerm_storage_account.function_app_sa.id
+# }
+
+# resource "azurerm_storage_blob" "function_code" {
+#   name                   = "function.zip"
+#   storage_account_name   = azurerm_storage_account.function_app_sa.name
+#   type                   = "Block"
+#   storage_container_name = azurerm_storage_container.container.name
+#   source                 = "azure/function.zip"
+# }
+
 resource "azurerm_service_plan" "function_app_sp" {
   name                = "app-service-plan"
   resource_group_name = var.resource_group_name
@@ -278,6 +329,11 @@ resource "azurerm_windows_function_app" "function_app" {
       action     = "Deny"
       priority   = 200
     }
+  }
+
+  app_settings = {
+    FUNCTIONS_WORKER_RUNTIME = "python"
+    "WEBSITE_RUN_FROM_PACKAGE"  = 0
   }
 }
 
